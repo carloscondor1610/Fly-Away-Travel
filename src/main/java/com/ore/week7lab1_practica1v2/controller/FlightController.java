@@ -10,7 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.ore.week7lab1_practica1v2.service.FlightService;
 import com.ore.week7lab1_practica1v2.DTO.NewFlightRequestDTO;
-
+import com.ore.week7lab1_practica1v2.DTO.CreateManyFlightsRequestDTO;
 import java.util.List;
 
 
@@ -85,5 +85,17 @@ public class FlightController {
         }
 
         return ResponseEntity.ok(booking);
+    }
+    @PostMapping("/create-many")
+    public ResponseEntity<List<String>> createMany(
+            @RequestBody CreateManyFlightsRequestDTO dto
+    ) {
+
+        List<String> ids =
+                flightService.createMany(dto.inputs);
+
+        return ResponseEntity
+                .status(201)
+                .body(ids);
     }
 }

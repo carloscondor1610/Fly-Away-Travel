@@ -17,7 +17,9 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.util.*;
-
+import java.io.FileWriter;
+import java.io.IOException;
+import java.time.Instant;
 @Service
 public class FlightService {
 
@@ -93,27 +95,72 @@ public class FlightService {
             String flightNumber,
             String airlineName,
             String estDepartureTimeFrom,
-            String estDepartureTimeTo
-    ) {
+            String estDepartureTimeTo) {
 
         List<FlightResponseDTO> result = new ArrayList<>();
+
+        Date fromDate = null;
+        Date toDate = null;
+
+        try {
+
+            SimpleDateFormat format =
+                    new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssX");
+
+            if (estDepartureTimeFrom != null &&
+                    !estDepartureTimeFrom.isEmpty()) {
+
+                fromDate = format.parse(estDepartureTimeFrom);
+            }
+
+            if (estDepartureTimeTo != null &&
+                    !estDepartureTimeTo.isEmpty()) {
+
+                toDate = format.parse(estDepartureTimeTo);
+            }
+
+        } catch (ParseException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+        }
 
         for (Flight flight : flights.values()) {
 
             boolean matches = true;
 
-            if (flightNumber != null && !flightNumber.isEmpty()) {
+            if (flightNumber != null &&
+                    !flightNumber.isEmpty()) {
 
-                if (!flight.getFlightNumber().contains(flightNumber)) {
+                if (!flight.getFlightNumber()
+                        .contains(flightNumber)) {
+
                     matches = false;
                 }
             }
 
-            if (airlineName != null && !airlineName.isEmpty()) {
+            if (airlineName != null &&
+                    !airlineName.isEmpty()) {
 
                 if (!flight.getAirlineName()
                         .toLowerCase()
                         .contains(airlineName.toLowerCase())) {
+
+                    matches = false;
+                }
+            }
+
+            if (fromDate != null) {
+
+                if (flight.getEstDepartureTime()
+                        .before(fromDate)) {
+
+                    matches = false;
+                }
+            }
+
+            if (toDate != null) {
+
+                if (flight.getEstDepartureTime()
+                        .after(toDate)) {
 
                     matches = false;
                 }
@@ -125,7 +172,9 @@ public class FlightService {
         }
 
         result.sort(
-                Comparator.comparing(f -> f.flightNumber)
+                Comparator.comparing(
+                        FlightResponseDTO::getFlightNumber
+                )
         );
 
         return new FlightSearchResponseDTO(result);
@@ -145,43 +194,132 @@ public class FlightService {
         Flight flight = flights.get(dto.flightId);
 
         if (flight == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST
+            );
         }
 
         if (flight.getAvailableSeats() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+
+        if (flight.getEstDepartureTime()
+                .before(new Date())) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+
+        for (Booking booking : bookings.values()) {
+
+            Flight bookedFlight =
+                    flights.get(booking.getFlightId());
+
+            if (bookedFlight == null) {
+                continue;
+            }
+
+            boolean overlap =
+                    flight.getEstDepartureTime()
+                            .before(
+                                    bookedFlight.getEstArrivalTime()
+                            )
+                            &&
+                            flight.getEstArrivalTime()
+                                    .after(
+                                            bookedFlight.getEstDepartureTime()
+                                    );
+
+            if (overlap) {
+
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST
+                );
+            }
         }
 
         flight.setAvailableSeats(
                 flight.getAvailableSeats() - 1
         );
 
-        User customer = userService
-                .getAll()
-                .values()
-                .iterator()
-                .next();
-
-        String bookingId = UUID.randomUUID().toString();
+        String bookingId =
+                UUID.randomUUID().toString();
 
         Booking booking = new Booking(
                 bookingId,
                 Instant.now().toString(),
                 flight.getId(),
                 flight.getFlightNumber(),
-                "customer-id",
+                "1",
                 "John",
                 "Doe",
-                flight.getEstDepartureTime().toInstant().toString(),
-                flight.getEstArrivalTime().toInstant().toString()
+                flight.getEstDepartureTime()
+                        .toInstant()
+                        .toString(),
+                flight.getEstArrivalTime()
+                        .toInstant()
+                        .toString()
         );
 
         bookings.put(bookingId, booking);
+
+        try {
+
+            FileWriter writer = new FileWriter(
+                    "D:\\-cs2031-2026-1-week07-tester-main\\flight_booking_email_"
+                            + bookingId +
+                            ".txt"
+            );
+
+            writer.write(
+                    "bookingDate: " +
+                            booking.getBookingDate() + "\n" +
+
+                            "customerFirstName: " +
+                            booking.getCustomerFirstName() + "\n" +
+
+                            "customerLastName: " +
+                            booking.getCustomerLastName() + "\n" +
+
+                            "flightNumber: " +
+                            booking.getFlightNumber() + "\n" +
+
+                            "estDepartureTime: " +
+                            booking.getEstDepartureTime() + "\n" +
+
+                            "estArrivalTime: " +
+                            booking.getEstArrivalTime()
+            );
+
+            writer.close();
+
+        } catch (IOException e) {
+
+            throw new RuntimeException(e);
+        }
 
         return bookingId;
     }
 
     public Booking getBookingById(String id){
         return bookings.get(id);
+    }
+    public List<String> createMany(
+            List<NewFlightRequestDTO> inputs
+    ) {
+
+        List<String> ids = new ArrayList<>();
+
+        for (NewFlightRequestDTO dto : inputs) {
+
+            String id = create(dto);
+
+            ids.add(id);
+        }
+
+        return ids;
     }
 }
